@@ -1,0 +1,3 @@
+[submodule "imagenet/sparsimony"]
+	path = imagenet/sparsimony
+	url = https://github.com/mklasby/sparsimony.git

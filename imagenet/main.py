@@ -20,6 +20,7 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
+from sparsimony.api import rigl
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -153,6 +154,33 @@ def main_worker(gpu, ngpus_per_node, args):
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
+        # define loss function (criterion), optimizer, and learning rate scheduler
+        
+
+        optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                momentum=args.momentum,
+                                weight_decay=args.weight_decay)
+
+        """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
+        scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
+
+        # Add the sparsifier configuration after initializing the optimizer
+        sparsifier = rigl(
+        optimizer,
+        sparsity=0.97,   # Modify this value to adjust the target sparsity level
+        t_end= 2400000,    # Number of steps for sparsity evolution
+        )
+
+        # Define which layers to sparsify (e.g., Linear and Conv2d layers)
+        sparse_config = [
+                {"tensor_fqn": f"{fqn}.weight"}
+                for fqn, module in model.named_modules()
+                if isinstance(module, nn.Linear) or isinstance(module, nn.Conv2d)
+            ]
+
+        # Prepare the model for sparsity using the sparsifier
+        sparsifier.prepare(model, sparse_config)
+        
         if torch.cuda.is_available():
             if args.gpu is not None:
                 torch.cuda.set_device(args.gpu)
@@ -191,15 +219,8 @@ def main_worker(gpu, ngpus_per_node, args):
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-    # define loss function (criterion), optimizer, and learning rate scheduler
+        
     criterion = nn.CrossEntropyLoss().to(device)
-
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
-    
-    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
     
     # optionally resume from a checkpoint
     if args.resume:
@@ -278,7 +299,7 @@ def main_worker(gpu, ngpus_per_node, args):
             train_sampler.set_epoch(epoch)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, device, args)
+        train(train_loader, model, criterion, optimizer, sparsifier, epoch, device, args)
 
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)
@@ -301,7 +322,7 @@ def main_worker(gpu, ngpus_per_node, args):
             }, is_best)
 
 
-def train(train_loader, model, criterion, optimizer, epoch, device, args):
+def train(train_loader, model, criterion, optimizer, sparsifier, epoch, device, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -338,6 +359,8 @@ def train(train_loader, model, criterion, optimizer, epoch, device, args):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        # Apply the sparsifier step to update sparsity
+        sparsifier.step()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
