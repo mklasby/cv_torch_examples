@@ -164,21 +164,21 @@ def main_worker(gpu, ngpus_per_node, args):
         """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
         scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
 
-        # Add the sparsifier configuration after initializing the optimizer
+        # Added the sparsifier configuration after initializing the optimizer
         sparsifier = rigl(
         optimizer,
-        sparsity=0.97,   # Modify this value to adjust the target sparsity level
+        sparsity=0.97,   
         t_end= 2400000,    # Number of steps for sparsity evolution
         )
 
-        # Define which layers to sparsify (e.g., Linear and Conv2d layers)
+        # Defined which layers to sparsify (e.g., Linear and Conv2d layers)
         sparse_config = [
                 {"tensor_fqn": f"{fqn}.weight"}
                 for fqn, module in model.named_modules()
                 if isinstance(module, nn.Linear) or isinstance(module, nn.Conv2d)
             ]
 
-        # Prepare the model for sparsity using the sparsifier
+        # Preparing the model for sparsity using the sparsifier
         sparsifier.prepare(model, sparse_config)
         
         if torch.cuda.is_available():
