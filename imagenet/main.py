@@ -179,7 +179,7 @@ def main_worker(gpu, ngpus_per_node, args):
             ]
 
         # Preparing the model for sparsity using the sparsifier
-        sparsifier.prepare(model, sparse_config)
+        #sparsifier.prepare(model, sparse_config)
         
         if torch.cuda.is_available():
             if args.gpu is not None:
@@ -190,6 +190,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 # ourselves based on the total number of GPUs of the current node.
                 args.batch_size = int(args.batch_size / ngpus_per_node)
                 args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
+                sparsifier.prepare(model, sparse_config)
                 model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
             else:
                 model.cuda()
